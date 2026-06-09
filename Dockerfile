@@ -13,7 +13,7 @@ RUN NEXT_PUBLIC_APP_VERSION="$(cat /app/VERSION)" npm run build
 # ── Stage 2: build the Rust backend ──────────────────────────────────────────
 # wreq → boring-sys2 (BoringSSL) needs cmake + nasm + clang/libclang;
 # git2 (vendored-libgit2) and rusqlite (bundled) need a C toolchain + perl.
-FROM rust:1.85-bookworm AS rust-build
+FROM rust:1-bookworm AS rust-build
 RUN apt-get update && apt-get install -y --no-install-recommends \
         cmake nasm clang libclang-dev perl pkg-config \
     && rm -rf /var/lib/apt/lists/*
