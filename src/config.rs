@@ -447,10 +447,12 @@ fn normalize_image_storage_settings(value: Option<&Value>) -> Value {
     let get = |k: &str| src.and_then(|m| m.get(k));
     let enabled = normalize_bool(get("enabled"), false);
     let mut mode = str_field(get("mode")).trim().to_ascii_lowercase();
-    if !["local", "webdav", "both"].contains(&mode.as_str()) {
+    if !["local", "webdav", "both", "none"].contains(&mode.as_str()) {
         mode = "local".into();
     }
-    if !enabled {
+    // `none` (pure relay — never persist) is honored regardless of `enabled`;
+    // the other modes fall back to local when storage isn't enabled.
+    if !enabled && mode != "none" {
         mode = "local".into();
     }
     let default_root = "chatgpt2api/images";
@@ -476,6 +478,10 @@ fn normalize_image_storage_settings(value: Option<&Value>) -> Value {
 
 fn validate_image_storage_settings(settings: &Value) -> anyhow::Result<()> {
     if !normalize_bool(settings.get("enabled"), false) {
+        return Ok(());
+    }
+    // `none` never touches WebDAV, so it has nothing to validate.
+    if str_field(settings.get("mode")).trim().to_ascii_lowercase() == "none" {
         return Ok(());
     }
     if str_field(settings.get("webdav_url")).trim().is_empty() {

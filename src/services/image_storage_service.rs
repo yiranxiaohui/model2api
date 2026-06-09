@@ -114,6 +114,14 @@ fn ext_from_type(data: &[u8]) -> &'static str {
     }
 }
 
+fn mime_from_type(data: &[u8]) -> &'static str {
+    match imagesize::image_type(data) {
+        Ok(imagesize::ImageType::Jpeg) => "image/jpeg",
+        Ok(imagesize::ImageType::Webp) => "image/webp",
+        _ => "image/png",
+    }
+}
+
 fn read_json_object(path: &Path) -> Map<String, Value> {
     let text = match std::fs::read_to_string(path) {
         Ok(t) => t,
@@ -475,9 +483,24 @@ impl ImageStorageService {
     /// logged and the corresponding `webdav` flag is left false rather than
     /// raising.
     pub async fn save(&self, data: &[u8], base_url: Option<&str>) -> StoredImage {
+        let mut mode = self.mode();
+
+        // Pure API-relay mode: don't persist anywhere (no local disk, no WebDAV,
+        // no index), just hand the image back inline as a data URI.
+        if mode == "none" {
+            use base64::engine::general_purpose::STANDARD;
+            use base64::Engine;
+            let url = format!("data:{};base64,{}", mime_from_type(data), STANDARD.encode(data));
+            return StoredImage {
+                rel: String::new(),
+                url,
+                storage: "none".to_string(),
+                size: data.len(),
+            };
+        }
+
         self.inner.config.cleanup_old_images();
         let rel = self.make_relative_path(data);
-        let mut mode = self.mode();
         if !matches!(mode.as_str(), "local" | "webdav" | "both") {
             mode = "local".to_string();
         }
