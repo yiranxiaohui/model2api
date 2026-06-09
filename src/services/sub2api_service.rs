@@ -416,7 +416,7 @@ impl Sub2apiService {
     // ---- HTTP plumbing ----
 
     fn build_client(&self) -> Result<wreq::Client, String> {
-        let mut builder = wreq::Client::builder().emulation(wreq_util::Emulation::Chrome131);
+        let mut builder = wreq::Client::builder().emulation(wreq_util::Emulation::Chrome137);
         let proxy = self.inner.config.proxy_setting();
         if !proxy.trim().is_empty() {
             if let Ok(p) = wreq::Proxy::all(proxy.trim()) {

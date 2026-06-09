@@ -339,7 +339,7 @@ impl PlatformRegistrar {
         }
 
         let mut builder = wreq::Client::builder()
-            .emulation(wreq_util::Emulation::Chrome131)
+            .emulation(wreq_util::Emulation::Chrome137)
             .cert_verification(false)
             .cookie_provider(jar);
 

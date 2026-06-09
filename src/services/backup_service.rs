@@ -236,7 +236,7 @@ impl R2Client {
                 p
             }
         };
-        let mut builder = wreq::Client::builder().emulation(wreq_util::Emulation::Chrome131);
+        let mut builder = wreq::Client::builder().emulation(wreq_util::Emulation::Chrome137);
         if !proxy.trim().is_empty() {
             if let Ok(p) = wreq::Proxy::all(proxy.trim()) {
                 builder = builder.proxy(p);

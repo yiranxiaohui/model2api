@@ -9,9 +9,9 @@ use chrono::Utc;
 use rand::Rng;
 use serde_json::{json, Value};
 
-pub const DEFAULT_SENTINEL_USER_AGENT: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36";
+pub const DEFAULT_SENTINEL_USER_AGENT: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36";
 pub const DEFAULT_SENTINEL_SEC_CH_UA: &str =
-    "\"Chromium\";v=\"145\", \"Google Chrome\";v=\"145\", \"Not/A)Brand\";v=\"99\"";
+    "\"Chromium\";v=\"137\", \"Google Chrome\";v=\"137\", \"Not/A)Brand\";v=\"99\"";
 
 const MAX_ATTEMPTS: usize = 500_000;
 const ERROR_PREFIX: &str = "wQ8Lk5FbGpA2NcR9dShT6gYjU7VxZ4D";

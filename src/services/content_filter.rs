@@ -283,7 +283,7 @@ impl ContentFilter {
 
     /// Build a moderation HTTP client honoring the configured proxy.
     fn build_client(&self) -> Result<wreq::Client, wreq::Error> {
-        let mut builder = wreq::Client::builder().emulation(wreq_util::Emulation::Chrome131);
+        let mut builder = wreq::Client::builder().emulation(wreq_util::Emulation::Chrome137);
         let proxy = self.config.proxy_setting();
         if !proxy.trim().is_empty() {
             if let Ok(p) = wreq::Proxy::all(proxy.trim()) {

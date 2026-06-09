@@ -13,10 +13,10 @@ pub fn platform_oauth_redirect_uri() -> String {
 }
 
 pub const USER_AGENT: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) \
-AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36";
-pub const SEC_CH_UA: &str = "\"Google Chrome\";v=\"145\", \"Not?A_Brand\";v=\"8\", \"Chromium\";v=\"145\"";
+AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36";
+pub const SEC_CH_UA: &str = "\"Google Chrome\";v=\"137\", \"Not?A_Brand\";v=\"8\", \"Chromium\";v=\"137\"";
 pub const SEC_CH_UA_FULL_VERSION_LIST: &str =
-    "\"Chromium\";v=\"145.0.0.0\", \"Not:A-Brand\";v=\"99.0.0.0\", \"Google Chrome\";v=\"145.0.0.0\"";
+    "\"Chromium\";v=\"137.0.0.0\", \"Not:A-Brand\";v=\"99.0.0.0\", \"Google Chrome\";v=\"137.0.0.0\"";
 
 /// The `common_headers` dict (auth/oauth JSON requests).
 pub fn common_headers() -> Vec<(&'static str, String)> {

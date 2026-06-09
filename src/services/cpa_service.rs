@@ -308,7 +308,7 @@ impl CpaService {
 
     fn build_client(&self) -> Result<wreq::Client, String> {
         // Cert verification stays on (Python used `verify=True`).
-        let mut builder = wreq::Client::builder().emulation(wreq_util::Emulation::Chrome131);
+        let mut builder = wreq::Client::builder().emulation(wreq_util::Emulation::Chrome137);
         let proxy = self.config.proxy_setting();
         if !proxy.trim().is_empty() {
             if let Ok(p) = wreq::Proxy::all(proxy.trim()) {

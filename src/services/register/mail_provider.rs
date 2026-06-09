@@ -501,7 +501,7 @@ fn message_tracking_ref(message: &Value) -> String {
 /// Build an emulated `wreq` client, honoring the configured proxy.
 fn build_client(conf: &MailConf) -> Result<wreq::Client, MailError> {
     let mut builder = wreq::Client::builder()
-        .emulation(wreq_util::Emulation::Chrome131)
+        .emulation(wreq_util::Emulation::Chrome137)
         .cert_verification(false);
     if !conf.proxy.trim().is_empty() {
         if let Ok(p) = wreq::Proxy::all(conf.proxy.trim()) {

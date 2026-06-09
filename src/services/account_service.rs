@@ -39,7 +39,7 @@ const TOKEN_REFRESH_ERROR_BACKOFF_SECONDS: f64 = 5.0 * 60.0;
 const OAUTH_TOKEN_URL: &str = "https://auth.openai.com/oauth/token";
 const OAUTH_CLIENT_ID: &str = "app_2SKx67EdpoN0G6j64rFvigXD";
 const OAUTH_USER_AGENT: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) \
-AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36";
+AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36";
 
 // ---- small helpers on Value objects ----
 
@@ -926,7 +926,7 @@ impl AccountService {
         refresh_token: &str,
         account: &Value,
     ) -> Result<Value, String> {
-        let mut builder = wreq::Client::builder().emulation(wreq_util::Emulation::Chrome131);
+        let mut builder = wreq::Client::builder().emulation(wreq_util::Emulation::Chrome137);
         let proxy = {
             let ap = s_trim(account, "proxy");
             if !ap.is_empty() { ap } else { self.config.proxy_setting() }

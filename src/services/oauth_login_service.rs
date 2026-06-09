@@ -234,7 +234,7 @@ impl OAuthLoginService {
         redirect_uri: &str,
     ) -> Result<Value, OAuthLoginError> {
         let mut builder = wreq::Client::builder()
-            .emulation(wreq_util::Emulation::Chrome131)
+            .emulation(wreq_util::Emulation::Chrome137)
             .cert_verification(false);
         let proxy = self.config.proxy_setting();
         if !proxy.trim().is_empty() {
