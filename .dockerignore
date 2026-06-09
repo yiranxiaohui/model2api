@@ -1,0 +1,9 @@
+/target
+/data
+/web_dist
+web/node_modules
+web/.next
+web/out
+.git
+.env
+*.log

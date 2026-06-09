@@ -1,0 +1,23 @@
+# Rust
+/target
+**/*.rs.bk
+Cargo.lock.bak
+# Machine-specific build config (LIBCLANG_PATH etc.)
+/.cargo/config.toml
+
+# App data
+/data
+/web_dist
+/config.json.local
+
+# Frontend
+web/node_modules
+web/.next
+web/out
+
+# Env
+.env
+
+# OS
+.DS_Store
+Thumbs.db
