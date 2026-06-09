@@ -499,7 +499,18 @@ impl PlatformRegistrar {
         let ok = resp.as_ref().map(|r| r.status == 200).unwrap_or(false);
         if !ok {
             if is_cloudflare_challenge(resp.as_ref()) {
-                return Err(rerr("被 Cloudflare 拦截，请更换 IP 重试"));
+                // Surface the diagnostics instead of swallowing them: status code,
+                // the `server` header and `cf-ray` (Cloudflare's request id, useful
+                // for correlating the block) plus a body snippet.
+                let status = resp
+                    .as_ref()
+                    .map(|r| r.status.to_string())
+                    .unwrap_or_else(|| "unknown".to_string());
+                let server = resp.as_ref().map(|r| r.header("server")).unwrap_or("");
+                let debug = response_debug_detail(resp.as_ref(), 800);
+                return Err(rerr(format!(
+                    "被 Cloudflare 拦截，请更换 IP 重试 (cf_block http_{status}, server={server}, {debug})"
+                )));
             }
             let err_obj = resp
                 .as_ref()
