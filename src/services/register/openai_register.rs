@@ -267,16 +267,28 @@ fn response_debug_detail(resp: Option<&Resp>, limit: usize) -> String {
     parts.join(", ")
 }
 
-/// Port of `_is_cloudflare_challenge`.
+/// Whether a response is a genuine Cloudflare interstitial/challenge.
+///
+/// The bare `server: cloudflare` header is NOT a signal — OpenAI always sits
+/// behind Cloudflare, so every response carries it. Keying off that header
+/// misreports normal non-200 responses (e.g. the authorize 302) as blocks. A
+/// real challenge is identified by the `cf-mitigated` marker or the interstitial
+/// HTML ("Just a moment" / the challenge-platform script).
 fn is_cloudflare_challenge(resp: Option<&Resp>) -> bool {
     let Some(resp) = resp else {
         return false;
     };
+    if resp
+        .header("cf-mitigated")
+        .to_lowercase()
+        .contains("challenge")
+    {
+        return true;
+    }
     let text = resp.text.to_lowercase();
-    let server = resp.header("server").to_lowercase();
-    server.contains("cloudflare")
-        || text.contains("challenges.cloudflare.com")
+    text.contains("challenges.cloudflare.com")
         || text.contains("<title>just a moment")
+        || text.contains("cf_chl_opt")
 }
 
 /// Port of `extract_oauth_callback_params_from_url` (the `code` is all we need).
@@ -622,7 +634,13 @@ impl PlatformRegistrar {
             )
             .await;
 
-        let ok = resp.as_ref().map(|r| r.status == 200).unwrap_or(false);
+        // OpenAI's /authorize answers a successful signup flow with a 302 to
+        // /create-account/password (wreq does not follow redirects), so 302 is
+        // success here just like create_account.
+        let ok = resp
+            .as_ref()
+            .map(|r| r.status == 200 || r.status == 302)
+            .unwrap_or(false);
         if !ok {
             if is_cloudflare_challenge(resp.as_ref()) {
                 // Surface the diagnostics instead of swallowing them: status code,
