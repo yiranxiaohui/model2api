@@ -23,6 +23,24 @@ pub struct Solution {
     pub status: i64,
 }
 
+/// Build FlareSolverr's `proxy` object. Chromium can't authenticate from a
+/// `user:pass@host` URL, so any embedded credentials must be split out into
+/// separate `username`/`password` fields (which trigger FlareSolverr's auth
+/// extension). A credential-less proxy is passed through as just `{url}`.
+fn proxy_field(proxy: &str) -> Value {
+    if let Ok(url) = wreq::Url::parse(proxy) {
+        let user = url.username();
+        if !user.is_empty() {
+            let password = url.password().unwrap_or("");
+            let host = url.host_str().unwrap_or("");
+            let port = url.port().map(|p| format!(":{p}")).unwrap_or_default();
+            let clean = format!("{}://{host}{port}", url.scheme());
+            return json!({ "url": clean, "username": user, "password": password });
+        }
+    }
+    json!({ "url": proxy })
+}
+
 /// POST `{cmd: request.get}` to a FlareSolverr `/v1` endpoint and return the
 /// solved cookies + User-Agent. `proxy` (when non-empty) is forwarded so the
 /// browser egresses from the same IP the register flow will use.
@@ -38,7 +56,7 @@ pub async fn solve(
         "maxTimeout": max_timeout_ms,
     });
     if !proxy.trim().is_empty() {
-        payload["proxy"] = json!({ "url": proxy.trim() });
+        payload["proxy"] = proxy_field(proxy.trim());
     }
 
     let client = wreq::Client::builder()
