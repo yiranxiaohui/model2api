@@ -326,7 +326,7 @@ struct PlatformRegistrar {
 impl PlatformRegistrar {
     /// Port of `create_session` + `__init__`: build a Chrome-emulated `wreq`
     /// client, pin the `oai-did` cookie, honor the configured proxy.
-    fn new(config: &Config) -> Result<Self, RegisterError> {
+    fn new(config: &Config, proxy_override: &str) -> Result<Self, RegisterError> {
         let device_id = uuid::Uuid::new_v4().to_string();
 
         let jar = Arc::new(wreq::cookie::Jar::default());
@@ -343,7 +343,14 @@ impl PlatformRegistrar {
             .cert_verification(false)
             .cookie_provider(jar);
 
-        let proxy = config.proxy_setting();
+        // Python `worker` builds the session from the register config's own
+        // `proxy` (config["proxy"]); fall back to the global config proxy only
+        // when the register proxy is empty.
+        let proxy = if proxy_override.trim().is_empty() {
+            config.proxy_setting()
+        } else {
+            proxy_override.trim().to_string()
+        };
         if !proxy.trim().is_empty() {
             if let Ok(p) = wreq::Proxy::all(proxy.trim()) {
                 builder = builder.proxy(p);
@@ -865,8 +872,8 @@ async fn register(
 ///
 /// Persisting the result (Python's `account_service.add_account_items` /
 /// `refresh_accounts`) is left to the caller.
-pub async fn register_one(config: &Config, mail_config: &Value, index: i64) -> Value {
-    let mut registrar = match PlatformRegistrar::new(config) {
+pub async fn register_one(config: &Config, mail_config: &Value, index: i64, proxy: &str) -> Value {
+    let mut registrar = match PlatformRegistrar::new(config, proxy) {
         Ok(r) => r,
         Err(e) => return json!({"ok": false, "index": index, "error": e.to_string()}),
     };

@@ -26,10 +26,10 @@
 //!   *fixed* input stream and cannot express the dynamic stop-condition / idle
 //!   re-poll loop of the quota/available modes, so a manually-driven
 //!   `FuturesUnordered` (also from `futures`) is used instead.
-//! * `register_one` (and the mail provider) read the registrar's HTTP proxy from
-//!   the global [`Config::proxy_setting`]; the register config's own `proxy`
-//!   field is still injected into the `mail` section (`inject_proxy_to_mail`),
-//!   matching Python, but no longer feeds the registrar client directly.
+//! * The registrar client prefers the register config's own `proxy` field
+//!   (Python's `PlatformRegistrar(config["proxy"])`), falling back to the global
+//!   [`Config::proxy_setting`] only when it is empty. The register proxy is also
+//!   injected into the `mail` section (`inject_proxy_to_mail`).
 //! * Python's module-global `openai_register.stats` / `stats_lock` sync is
 //!   dropped — the per-run counters live entirely in this service's `stats`.
 
@@ -559,11 +559,9 @@ impl RegisterService {
     /// Port of the success branch of `worker`: register one account and, on
     /// success, persist it to the pool and refresh its status. Returns the
     /// `register_one` envelope so the caller can tally success/fail.
-    async fn register_and_persist(&self, index: i64, mail_config: Value) -> Value {
-        let result = openai_register::register_one(&self.config, &mail_config, index).await;
+    async fn register_and_persist(&self, index: i64, mail_config: Value, proxy: String) -> Value {
+        let result = openai_register::register_one(&self.config, &mail_config, index, &proxy).await;
         if result.get("ok").and_then(|v| v.as_bool()).unwrap_or(false) {
-            let email = result.get("email").and_then(|v| v.as_str()).unwrap_or("");
-            self.append_log(&format!("[任务{index}] {email} 注册成功"), "green");
             let access_token = result
                 .get("access_token")
                 .and_then(|v| v.as_str())
@@ -596,12 +594,6 @@ impl RegisterService {
                     );
                 }
             }
-        } else {
-            let reason = result
-                .get("error")
-                .and_then(|v| v.as_str())
-                .unwrap_or("未知错误");
-            self.append_log(&format!("[任务{index}] 注册失败，原因: {reason}"), "red");
         }
         result
     }
@@ -636,7 +628,19 @@ impl RegisterService {
                 let idx = submitted;
                 let this = self.clone();
                 let mail_config = cfg.get("mail").cloned().unwrap_or_else(|| json!({}));
-                futs.push(async move { this.register_and_persist(idx, mail_config).await });
+                // Prefer the register config's own `proxy` (Python parity); the
+                // registrar falls back to the global config proxy when empty.
+                let reg_proxy = cfg
+                    .get("proxy")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .trim()
+                    .to_string();
+                futs.push(async move {
+                    let t0 = std::time::Instant::now();
+                    let r = this.register_and_persist(idx, mail_config, reg_proxy).await;
+                    (r, t0.elapsed().as_secs_f64())
+                });
             }
 
             self.bump(json!({
@@ -660,12 +664,36 @@ impl RegisterService {
                 continue;
             }
 
-            if let Some(result) = futs.next().await {
+            if let Some((result, cost)) = futs.next().await {
                 done += 1;
+                let idx = result.get("index").and_then(|v| v.as_i64()).unwrap_or(0);
                 if result.get("ok").and_then(|v| v.as_bool()).unwrap_or(false) {
                     success += 1;
+                    // Recompute avg_seconds (elapsed / success) before reporting it.
+                    self.bump(json!({"done": done, "success": success, "fail": fail}));
+                    let avg = self
+                        .config_snapshot()
+                        .get("stats")
+                        .and_then(|s| s.get("avg_seconds"))
+                        .and_then(|v| v.as_f64())
+                        .unwrap_or(0.0);
+                    let email = result.get("email").and_then(|v| v.as_str()).unwrap_or("");
+                    self.append_log(
+                        &format!(
+                            "[任务{idx}] {email} 注册成功，本次耗时{cost:.1}s，全局平均每个号{avg:.1}s"
+                        ),
+                        "green",
+                    );
                 } else {
                     fail += 1;
+                    let reason = result
+                        .get("error")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("未知错误");
+                    self.append_log(
+                        &format!("[任务{idx}] 注册失败，本次耗时{cost:.1}s，原因: {reason}"),
+                        "red",
+                    );
                 }
             }
         }
