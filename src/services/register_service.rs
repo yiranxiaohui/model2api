@@ -562,6 +562,8 @@ impl RegisterService {
     async fn register_and_persist(&self, index: i64, mail_config: Value) -> Value {
         let result = openai_register::register_one(&self.config, &mail_config, index).await;
         if result.get("ok").and_then(|v| v.as_bool()).unwrap_or(false) {
+            let email = result.get("email").and_then(|v| v.as_str()).unwrap_or("");
+            self.append_log(&format!("[任务{index}] {email} 注册成功"), "green");
             let access_token = result
                 .get("access_token")
                 .and_then(|v| v.as_str())
@@ -594,6 +596,12 @@ impl RegisterService {
                     );
                 }
             }
+        } else {
+            let reason = result
+                .get("error")
+                .and_then(|v| v.as_str())
+                .unwrap_or("未知错误");
+            self.append_log(&format!("[任务{index}] 注册失败，原因: {reason}"), "red");
         }
         result
     }
