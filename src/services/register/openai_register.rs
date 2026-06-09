@@ -410,11 +410,37 @@ impl PlatformRegistrar {
         if let Some(b) = body {
             req = req.json(b);
         }
+        // Raw request trace (enable with RUST_LOG=model2api=debug). Captures what
+        // we actually send so a failure can be diagnosed independently of the
+        // `is_cloudflare_challenge` heuristic.
+        let ua = headers
+            .iter()
+            .find(|(k, _)| k.eq_ignore_ascii_case("user-agent"))
+            .map(|(_, v)| v.as_str())
+            .unwrap_or("");
+        tracing::debug!(
+            target: "model2api::register",
+            method = %method.to_ascii_uppercase(),
+            %url,
+            params = params.len(),
+            has_body = body.is_some(),
+            timeout_secs,
+            ua,
+            "register → request"
+        );
         let resp = req
             .timeout(Duration::from_secs(timeout_secs))
             .send()
             .await
-            .map_err(|e| format!("网络请求异常: {e}"))?;
+            .map_err(|e| {
+                tracing::debug!(
+                    target: "model2api::register",
+                    %url,
+                    error = %e,
+                    "register ✗ transport error"
+                );
+                format!("网络请求异常: {e}")
+            })?;
         let status = resp.status().as_u16();
         let url = resp.url().to_string();
         let mut hm = HashMap::new();
@@ -422,6 +448,26 @@ impl PlatformRegistrar {
             hm.insert(k.as_str().to_lowercase(), v.to_str().unwrap_or("").to_string());
         }
         let text = resp.text().await.unwrap_or_default();
+        // Raw response trace: status, final URL, every response header, and a
+        // body snippet — the ground truth behind whatever message we surface.
+        if tracing::enabled!(target: "model2api::register", tracing::Level::DEBUG) {
+            let mut header_keys: Vec<&String> = hm.keys().collect();
+            header_keys.sort();
+            let header_dump = header_keys
+                .iter()
+                .map(|k| format!("{k}: {}", hm[*k]))
+                .collect::<Vec<_>>()
+                .join(" | ");
+            tracing::debug!(
+                target: "model2api::register",
+                status,
+                final_url = %url,
+                body_len = text.len(),
+                headers = %header_dump,
+                body = %truncate(&text, 1500),
+                "register ← response"
+            );
+        }
         Ok(Resp {
             status,
             url,
@@ -444,13 +490,22 @@ impl PlatformRegistrar {
         retry_attempts: u32,
     ) -> (Option<Resp>, String) {
         let mut last_error = String::new();
-        for _ in 0..retry_attempts.max(1) {
+        let attempts = retry_attempts.max(1);
+        for attempt in 1..=attempts {
             match self
                 .send_once(method, url, headers, params, body, timeout_secs)
                 .await
             {
                 Ok(resp) => return (Some(resp), String::new()),
                 Err(e) => {
+                    tracing::debug!(
+                        target: "model2api::register",
+                        %url,
+                        attempt,
+                        attempts,
+                        error = %e,
+                        "register ✗ attempt failed, retrying"
+                    );
                     last_error = e;
                     tokio::time::sleep(Duration::from_secs(1)).await;
                 }
