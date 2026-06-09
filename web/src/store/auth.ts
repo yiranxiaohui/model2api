@@ -39,8 +39,8 @@ function normalizeSession(value: unknown, fallbackKey = ""): StoredAuthSession |
   };
 }
 
-export function getDefaultRouteForRole(role: AuthRole) {
-  return role === "admin" ? "/accounts" : "/image";
+export function getDefaultRouteForRole(_role: AuthRole) {
+  return "/accounts";
 }
 
 export async function getStoredAuthKey() {
