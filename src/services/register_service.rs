@@ -116,6 +116,11 @@ fn default_config() -> Value {
             "providers": [],
         },
         "proxy": "",
+        "flaresolverr": {
+            "enabled": false,
+            "url": "",
+            "max_timeout": 60000,
+        },
         "total": 10,
         "threads": 3,
         "mode": "total",
@@ -559,8 +564,16 @@ impl RegisterService {
     /// Port of the success branch of `worker`: register one account and, on
     /// success, persist it to the pool and refresh its status. Returns the
     /// `register_one` envelope so the caller can tally success/fail.
-    async fn register_and_persist(&self, index: i64, mail_config: Value, proxy: String) -> Value {
-        let result = openai_register::register_one(&self.config, &mail_config, index, &proxy).await;
+    async fn register_and_persist(
+        &self,
+        index: i64,
+        mail_config: Value,
+        proxy: String,
+        flaresolverr_config: Value,
+    ) -> Value {
+        let result =
+            openai_register::register_one(&self.config, &mail_config, index, &proxy, &flaresolverr_config)
+                .await;
         if result.get("ok").and_then(|v| v.as_bool()).unwrap_or(false) {
             let access_token = result
                 .get("access_token")
@@ -628,6 +641,7 @@ impl RegisterService {
                 let idx = submitted;
                 let this = self.clone();
                 let mail_config = cfg.get("mail").cloned().unwrap_or_else(|| json!({}));
+                let flaresolverr_config = cfg.get("flaresolverr").cloned().unwrap_or_else(|| json!({}));
                 // Prefer the register config's own `proxy` (Python parity); the
                 // registrar falls back to the global config proxy when empty.
                 let reg_proxy = cfg
@@ -638,7 +652,9 @@ impl RegisterService {
                     .to_string();
                 futs.push(async move {
                     let t0 = std::time::Instant::now();
-                    let r = this.register_and_persist(idx, mail_config, reg_proxy).await;
+                    let r = this
+                        .register_and_persist(idx, mail_config, reg_proxy, flaresolverr_config)
+                        .await;
                     (r, t0.elapsed().as_secs_f64())
                 });
             }

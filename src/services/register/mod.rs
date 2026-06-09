@@ -4,5 +4,6 @@
 //! OAuth-bridge login service (Phase 5) depends on them.
 
 pub mod constants;
+pub mod flaresolverr;
 pub mod mail_provider;
 pub mod openai_register;

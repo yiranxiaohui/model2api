@@ -41,6 +41,7 @@ use crate::services::register::constants::{
     PLATFORM_OAUTH_AUDIENCE, PLATFORM_OAUTH_CLIENT_ID, SEC_CH_UA, SEC_CH_UA_FULL_VERSION_LIST,
     USER_AGENT,
 };
+use crate::services::register::flaresolverr;
 use crate::services::register::mail_provider;
 use crate::utils::pkce::generate_pkce;
 
@@ -321,12 +322,42 @@ struct PlatformRegistrar {
     device_id: String,
     code_verifier: String,
     platform_auth_code: String,
+    /// When a FlareSolverr session warmed Cloudflare, the exact User-Agent its
+    /// browser used. The `cf_clearance` cookie is bound to it, so every request
+    /// must send this UA instead of the default constant.
+    cf_ua: Option<String>,
+}
+
+/// Map a FlareSolverr browser UA's Chrome major version to the nearest TLS
+/// emulation `wreq-util` supports, so our JA3/HTTP2 fingerprint matches the
+/// browser that obtained the `cf_clearance` cookie.
+fn emulation_from_ua(ua: &str) -> wreq_util::Emulation {
+    use wreq_util::Emulation;
+    let major = ua
+        .split("Chrome/")
+        .nth(1)
+        .and_then(|s| s.split('.').next())
+        .and_then(|s| s.parse::<u32>().ok())
+        .unwrap_or(137);
+    match major {
+        0..=131 => Emulation::Chrome131,
+        132 => Emulation::Chrome132,
+        133 => Emulation::Chrome133,
+        134 => Emulation::Chrome134,
+        135 => Emulation::Chrome135,
+        136 => Emulation::Chrome136,
+        _ => Emulation::Chrome137,
+    }
 }
 
 impl PlatformRegistrar {
     /// Port of `create_session` + `__init__`: build a Chrome-emulated `wreq`
     /// client, pin the `oai-did` cookie, honor the configured proxy.
-    fn new(config: &Config, proxy_override: &str) -> Result<Self, RegisterError> {
+    fn new(
+        config: &Config,
+        proxy_override: &str,
+        warm: Option<&flaresolverr::Solution>,
+    ) -> Result<Self, RegisterError> {
         let device_id = uuid::Uuid::new_v4().to_string();
 
         let jar = Arc::new(wreq::cookie::Jar::default());
@@ -336,10 +367,35 @@ impl PlatformRegistrar {
                 &format!("oai-did={device_id}; Domain=.auth.openai.com; Path=/"),
                 &url,
             );
+            // Inject the cf_clearance (and any other) cookies obtained by the
+            // FlareSolverr browser, each scoped to the domain it was set for.
+            if let Some(w) = warm {
+                for c in &w.cookies {
+                    let domain = if c.domain.trim().is_empty() {
+                        ".openai.com".to_string()
+                    } else {
+                        c.domain.clone()
+                    };
+                    jar.add_cookie_str(
+                        &format!("{}={}; Domain={domain}; Path=/", c.name, c.value),
+                        &url,
+                    );
+                }
+            }
         }
 
+        // Match the TLS fingerprint to the warming browser's Chrome version when
+        // we have one; otherwise use the aligned Chrome 137 default.
+        let emulation = match warm {
+            Some(w) if !w.user_agent.trim().is_empty() => emulation_from_ua(&w.user_agent),
+            _ => wreq_util::Emulation::Chrome137,
+        };
+        let cf_ua = warm
+            .map(|w| w.user_agent.trim().to_string())
+            .filter(|s| !s.is_empty());
+
         let mut builder = wreq::Client::builder()
-            .emulation(wreq_util::Emulation::Chrome137)
+            .emulation(emulation)
             .cert_verification(false)
             .cookie_provider(jar);
 
@@ -365,7 +421,20 @@ impl PlatformRegistrar {
             device_id,
             code_verifier: String::new(),
             platform_auth_code: String::new(),
+            cf_ua,
         })
+    }
+
+    /// Replace the `user-agent` header with the FlareSolverr browser's UA when a
+    /// warmed session exists — the `cf_clearance` cookie is bound to that UA.
+    fn apply_cf_ua(&self, headers: &mut [(String, String)]) {
+        if let Some(ua) = &self.cf_ua {
+            for (k, v) in headers.iter_mut() {
+                if k.eq_ignore_ascii_case("user-agent") {
+                    *v = ua.clone();
+                }
+            }
+        }
     }
 
     fn navigate_headers(&self, referer: &str) -> Vec<(String, String)> {
@@ -376,6 +445,7 @@ impl PlatformRegistrar {
         if !referer.is_empty() {
             headers.push(("referer".to_string(), referer.to_string()));
         }
+        self.apply_cf_ua(&mut headers);
         headers
     }
 
@@ -387,6 +457,7 @@ impl PlatformRegistrar {
         headers.push(("referer".to_string(), referer.to_string()));
         headers.push(("oai-device-id".to_string(), self.device_id.clone()));
         headers.extend(make_trace_headers());
+        self.apply_cf_ua(&mut headers);
         headers
     }
 
@@ -938,12 +1009,64 @@ async fn register(
 ///
 /// Persisting the result (Python's `account_service.add_account_items` /
 /// `refresh_accounts`) is left to the caller.
-pub async fn register_one(config: &Config, mail_config: &Value, index: i64, proxy: &str) -> Value {
-    let mut registrar = match PlatformRegistrar::new(config, proxy) {
+pub async fn register_one(
+    config: &Config,
+    mail_config: &Value,
+    index: i64,
+    proxy: &str,
+    flaresolverr_config: &Value,
+) -> Value {
+    step(index, "任务启动");
+
+    // Optional FlareSolverr warm-up: solve the Cloudflare challenge on
+    // auth.openai.com via a headless browser, then reuse its cf_clearance cookie
+    // + User-Agent. The browser must egress from the same IP as the register
+    // flow, so we forward the same effective proxy.
+    let eff_proxy = if proxy.trim().is_empty() {
+        config.proxy_setting()
+    } else {
+        proxy.trim().to_string()
+    };
+    let fs_enabled = flaresolverr_config
+        .get("enabled")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+    let fs_url = flaresolverr_config
+        .get("url")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .trim()
+        .to_string();
+    let mut warm: Option<flaresolverr::Solution> = None;
+    if fs_enabled && !fs_url.is_empty() {
+        let timeout_ms = flaresolverr_config
+            .get("max_timeout")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(60_000);
+        step(index, "FlareSolverr 预热 Cloudflare");
+        match flaresolverr::solve(&fs_url, AUTH_BASE, &eff_proxy, timeout_ms).await {
+            Ok(sol) => {
+                step(
+                    index,
+                    &format!(
+                        "FlareSolverr 预热完成: {} cookies, ua={}",
+                        sol.cookies.len(),
+                        truncate(&sol.user_agent, 60)
+                    ),
+                );
+                warm = Some(sol);
+            }
+            Err(e) => {
+                step_warn(index, &format!("FlareSolverr 预热失败: {e}"));
+                return json!({"ok": false, "index": index, "error": format!("FlareSolverr 预热失败: {e}")});
+            }
+        }
+    }
+
+    let mut registrar = match PlatformRegistrar::new(config, proxy, warm.as_ref()) {
         Ok(r) => r,
         Err(e) => return json!({"ok": false, "index": index, "error": e.to_string()}),
     };
-    step(index, "任务启动");
     match register(&mut registrar, config, mail_config, index).await {
         Ok(result) => {
             let mut obj = result.as_object().cloned().unwrap_or_default();
