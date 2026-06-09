@@ -2,7 +2,7 @@
 //! SPA/static fallback, and (in later phases) background-task lifespan.
 
 use axum::body::Body;
-use axum::extract::State;
+use axum::extract::{DefaultBodyLimit, State};
 use axum::http::{header, StatusCode, Uri};
 use axum::response::{IntoResponse, Response};
 use axum::Router;
@@ -25,6 +25,9 @@ pub fn build_router(state: SharedState) -> Router {
         .merge(api::system::router())
         // Catch-all: serve web assets / SPA fallback.
         .fallback(serve_web)
+        // Raise the request-body cap from axum's 2MB default; large account-pool
+        // imports (POST /api/accounts) otherwise get rejected with 413.
+        .layer(DefaultBodyLimit::max(100 * 1024 * 1024))
         .layer(cors)
         .with_state(state)
 }
