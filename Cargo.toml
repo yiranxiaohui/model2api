@@ -55,7 +55,10 @@ wreq-util = "2.2.6"
 
 # --- storage backends (database / git) ---
 rusqlite = { version = "0.32", features = ["bundled"] }
-git2 = { version = "0.19", features = ["vendored-libgit2"] }
+# default features (https/ssh) pull openssl-sys via libgit2-sys/libssh2-sys,
+# whose OpenSSL-3 symbols clash with wreq's BoringSSL libcrypto at link time.
+# Disable them; the git storage backend keeps local libgit2 (no remote TLS transport).
+git2 = { version = "0.19", default-features = false, features = ["vendored-libgit2"] }
 
 # --- backup (tar.gz + AES-256-CBC) & async traits ---
 tar = "0.4"
