@@ -75,7 +75,7 @@ export function TopNav() {
             </SheetTrigger>
             <SheetContent side="left">
               <SheetHeader>
-                <SheetTitle>chatgpt2api</SheetTitle>
+                <SheetTitle>model2api</SheetTitle>
                 <span className="text-xs text-stone-500 dark:text-stone-400">{roleLabel} · {displayName}</span>
               </SheetHeader>
               <nav className="mt-8 flex flex-col gap-1">
@@ -107,7 +107,7 @@ export function TopNav() {
             href="/accounts"
             className="shrink-0 py-1 text-[15px] font-bold tracking-tight text-stone-950 transition hover:text-stone-700 dark:text-stone-50 dark:hover:text-white"
           >
-            chatgpt2api
+            model2api
           </Link>
           <HeaderActions className="ml-auto sm:hidden" showGithubText={false} />
         </div>
