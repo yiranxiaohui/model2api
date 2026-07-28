@@ -7,3 +7,4 @@ pub mod constants;
 pub mod flaresolverr;
 pub mod mail_provider;
 pub mod openai_register;
+pub mod sentinel;

@@ -45,3 +45,13 @@ pub fn common_headers() -> Vec<(&'static str, String)> {
         ("user-agent", USER_AGENT.to_string()),
     ]
 }
+
+/// Sentinel SDK 版本（跟随参照项目更新；freeAgentIdentity 当前值）。
+pub const SENTINEL_SDK_VERSION: &str = "20260219f9f6";
+pub const SENTINEL_BASE: &str = "https://sentinel.openai.com";
+/// `POST` 拉 challenge 的端点。
+pub const SENTINEL_REQ_URL: &str = "https://sentinel.openai.com/backend-api/sentinel/req";
+/// SDK.js URL，写进指纹 config 第 5 槽。
+pub fn sentinel_sdk_url() -> String {
+    format!("{SENTINEL_BASE}/sentinel/{SENTINEL_SDK_VERSION}/sdk.js")
+}
