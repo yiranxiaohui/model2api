@@ -72,7 +72,8 @@ fn solve(seed: &str, difficulty: &str, mut config: Vec<Value>) -> String {
         config[9] = json!(nonce); // elapsed 槽：用递增值即可，服务器不核对具体值
         let encoded = encode(&Value::Array(config.clone()));
         let digest = fnv1a32(&format!("{seed}{encoded}"));
-        if &digest[..dn] <= difficulty {
+        let take = dn.min(digest.len());
+        if digest[..take] <= difficulty[..take] {
             return format!("{encoded}~S");
         }
     }
@@ -136,6 +137,14 @@ mod tests {
     fn difficulty_is_lexicographic_not_numeric() {
         // "0a" <= "1" 字典序成立；数值比较会不同。锁定用字符串比较。
         assert!("0a" <= "1");
+    }
+
+    #[test]
+    fn solve_does_not_panic_on_overlong_difficulty() {
+        // difficulty longer than the 8-char digest must not panic.
+        let cfg = reference_fingerprint("UA", "sid-x");
+        let out = solve("seed", "ffffffffff", cfg); // 10 chars, trivially satisfiable
+        assert!(out.ends_with("~S"));
     }
 
     #[test]

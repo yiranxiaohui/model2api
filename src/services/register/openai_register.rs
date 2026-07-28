@@ -847,8 +847,9 @@ impl PlatformRegistrar {
     }
 
     /// Port of the module-level `validate_otp`: first attempt without the
-    /// Sentinel header; on non-200 the Python retries *with* a freshly minted
-    /// sentinel token. That token is deferred, so the retry is a plain re-send.
+    /// Sentinel header; on non-200, retry *with* a freshly built
+    /// `authorize_continue` sentinel token attached as the
+    /// `openai-sentinel-token` header.
     async fn validate_otp(&self, code: &str) -> (Option<Resp>, String) {
         let mut headers = common_headers()
             .into_iter()
