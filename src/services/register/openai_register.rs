@@ -14,11 +14,11 @@
 //!      `{access_token, refresh_token, id_token}` triple.
 //!
 //! Deviations from the Python original:
-//! * The Sentinel proof-of-work header (`openai-sentinel-token`, produced by
-//!   `build_sentinel_token`) is **deferred** — the full HTTP requirements
-//!   handshake is not yet ported. Every site where Python attaches the header is
-//!   marked with a `// TODO: sentinel token (deferred)` and the request proceeds
-//!   without it (best-effort). See [`PlatformRegistrar::validate_otp`] etc.
+//! * The Sentinel proof-of-work header (`openai-sentinel-token`) is produced by
+//!   `PlatformRegistrar::build_sentinel_token` and attached at the three sites
+//!   Python sets it (`register_user`, `create_account`, and the `validate_otp`
+//!   retry). If token minting fails the request still proceeds without the
+//!   header (best-effort), matching the Python fallback behavior.
 //! * Threading / global stats / `account_service` persistence from the Python
 //!   `worker` are out of scope here; [`register_one`] returns the result object
 //!   and the caller persists it.
@@ -764,9 +764,12 @@ impl PlatformRegistrar {
         index: i64,
     ) -> Result<(), RegisterError> {
         step(index, "开始提交注册密码");
-        let headers = self.json_headers(&format!("{AUTH_BASE}/create-account/password"));
-        // TODO: sentinel token (deferred) — Python sets
-        // headers["openai-sentinel-token"] = build_sentinel_token(.., "username_password_create").
+        let mut headers = self.json_headers(&format!("{AUTH_BASE}/create-account/password"));
+        if let Some(tok) = self.build_sentinel_token("username_password_create").await {
+            headers.push(("openai-sentinel-token".to_string(), tok));
+        } else {
+            step_warn(index, "sentinel token 获取失败，裸发 register_user");
+        }
         let payload = json!({"username": email, "password": password});
         let (resp, error) = self
             .request_with_retry(
@@ -863,9 +866,9 @@ impl PlatformRegistrar {
         if resp.as_ref().map(|r| r.status == 200).unwrap_or(false) {
             return (resp, error);
         }
-        // TODO: sentinel token (deferred) — Python sets
-        // headers["openai-sentinel-token"] = build_sentinel_token(.., "authorize_continue")
-        // before this second attempt.
+        if let Some(tok) = self.build_sentinel_token("authorize_continue").await {
+            headers.push(("openai-sentinel-token".to_string(), tok));
+        }
         self.request_with_retry("post", &url, &headers, &[], Some(&payload), DEFAULT_TIMEOUT, 3)
             .await
     }
@@ -903,9 +906,12 @@ impl PlatformRegistrar {
         index: i64,
     ) -> Result<(), RegisterError> {
         step(index, "开始创建账号资料");
-        let headers = self.json_headers(&format!("{AUTH_BASE}/about-you"));
-        // TODO: sentinel token (deferred) — Python sets
-        // headers["openai-sentinel-token"] = build_sentinel_token(.., "oauth_create_account").
+        let mut headers = self.json_headers(&format!("{AUTH_BASE}/about-you"));
+        if let Some(tok) = self.build_sentinel_token("oauth_create_account").await {
+            headers.push(("openai-sentinel-token".to_string(), tok));
+        } else {
+            step_warn(index, "sentinel token 获取失败，裸发 create_account");
+        }
         let payload = json!({"name": name, "birthdate": birthdate});
         let (resp, error) = self
             .request_with_retry(
